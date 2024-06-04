@@ -646,9 +646,6 @@ def roi_classes(shp_fp, field_name = 'Classname'):
         feature = in_layer.GetNextFeature()
     class_names = list(set(field_vals)) # List unique field values (class names)
     return(class_names) # Return list of unique class names
-##################### Define DCNN model architecture using PyTorch library
-
-
 ##################### Define DCNN model architecture
 def dcnn_model(numChannels, dimension, numClasses):
     model = Sequential() # Define sequential model
@@ -666,8 +663,56 @@ def dcnn_model(numChannels, dimension, numClasses):
     model.summary()
     model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy']) # Learning parameters
     return model
+##################### Plot images with labels
+def plot_images(dataloader, batch_size = 20):
+    dataiter = iter(dataloader)
+    images, labels = dataiter.next()
+    fig = plt.figure(figsize=(25, 4))
+    for idx in np.arange(batch_size):
+        ax = fig.add_subplot(2, batch_size/2, idx + 1, xticks=[], yticks=[])
+        img = images[idx]
+        img = img.numpy()
+        # img = np.transpose(img, (1, 2, 0))
+        img = np.squeeze(img)
+        ax.imshow(img)
+        ax.set_title(labels[idx])
+##################### Feature Viz
+def feature_viz(model, image_fp, class_names, numChannels, dimension, output_dir, num_features = 32):
+    # model = DeepCNN(len(class_names), numChannels)
+    # model.load_state_dict(torch.load('saved_model.pt'))
+    # print(model)
+    ds = gdal.Open(image_fp) # Open input image
+    ds_geotransform = ds.GetGeoTransform() # Get image geotransform
+    ds_projection = ds.GetProjection() # Get image projection. If the image is using rational polynomial coefficients for spatial reference, this will be blank
+    ds_RPCs = ds.GetMetadata('RPC') # Get image rational polynomial coefficients. If the image is projected, this will be blank
+    ds_nbands = ds.RasterCount # Get the number of bands
+    ds_cols = ds.RasterXSize # Get the number of columns (x)
+    ds_rows = ds.RasterYSize # Get the number of rows (y)
+    ds_nodata = ds.GetRasterBand(1).GetNoDataValue()
+    if not output_dir.endswith('/'):
+        output_dir += '/'
+    create_directory(output_dir) # Create output directory if it doesn't already exist
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    else:
+        device = torch.device('cpu')
+    print(f"Using device: {device}")
+    model.to(device)  # move the model to the GPU (if available)
+    model.eval()  # set the model to evaluation mode
+    for i in range(num_features):
+        filter = model.conv1.weight.data[i].cpu().numpy()
+        filter = np.squeeze(filter)
+        plt.imshow(filter, cmap='gray')
+        plt.savefig(output_dir + 'filter' + str(i) + '.png')
+    ds = None
 ##################### Train DeepCNN model
 def train_deep_cnn(cnnFileName, training_data_directory, class_names, numChannels, dimension, selected_sample_per_class = 20000, balanced_option = 'balanced', epochs = 500, batchSize = 256, deleted_channels = []):
+    # torch.cuda.cudart().cudaProfilerStart()
+    # torch.cuda.cudart().cudaProfilerStop()
+    # torch.cuda.cudart().cudaProfilerInitialize()
+    # torch.cuda.cudart().cudaProfilerSetConfig()
+    # with torch.cuda.device(0):
+
     loss_over_time = [] # to track the loss as the network trains
 
     X_train = []
@@ -678,10 +723,21 @@ def train_deep_cnn(cnnFileName, training_data_directory, class_names, numChannel
     # Create a Dataset from the training data
     # Dataset object is a Python generator that loads data in batches
     training_data = TensorDataset(torch.Tensor(X_train), torch.Tensor(y_train))
+    print(f'Number of training samples: {len(training_data)}')
 
     # Create DataLoader object from training data
     # DataLoader object is a Python generator that loads data in batches
     train_dataloader = DataLoader(training_data, batch_size=batchSize, shuffle=True)
+
+    # Plot images with labels
+    # plot_images(train_dataloader, 10)
+
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    else:
+        device = torch.device('cpu')
+
+    print(f"Using device: {device}")
 
     # Define the model
     model = DeepCNN(len(class_names), numChannels)
@@ -695,6 +751,7 @@ def train_deep_cnn(cnnFileName, training_data_directory, class_names, numChannel
     # use momentum to speed up optimization (find global minimum faster)
     optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
+    model.to(device)  # move the model to the GPU (if available)
     # set the model to training mode
     model.train()  # model.eval() to set to evaluation mode
 
@@ -703,6 +760,7 @@ def train_deep_cnn(cnnFileName, training_data_directory, class_names, numChannel
         for i, data in enumerate(train_dataloader):
             # get the input images and their corresponding labels
             inputs, labels = data
+            inputs, labels = inputs.to(device), labels.to(device)
 
             # zero the parameter gradients
             optimizer.zero_grad()

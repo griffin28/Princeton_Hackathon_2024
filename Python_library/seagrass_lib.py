@@ -8,13 +8,13 @@ from xml.dom import minidom
 import pandas as pd
 import datetime
 import numpy as np
-import gc 
+import gc
 import glob
 import tensorflow
 from keras import __version__
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout, Flatten, Convolution2D
-from tensorflow.keras.utils import to_categorical
+from tensorflow.python.keras.models import Sequential
+from tensorflow.python.keras.layers import Dense, Dropout, Flatten, Convolution2D
+from tensorflow.python.keras.utils import to_categorical
 from tensorflow.python.keras.saving import hdf5_format
 import sys
 import h5py
@@ -76,7 +76,7 @@ def coord_to_extent_polygon(extent_coord):
     ring.AddPoint(extent_coord[2], extent_coord[1]) # ...
     ring.AddPoint(extent_coord[2], extent_coord[3]) # ...
     ring.AddPoint(extent_coord[0], extent_coord[3]) # ...
-    ring.AddPoint(extent_coord[0], extent_coord[1]) # Close linear string 
+    ring.AddPoint(extent_coord[0], extent_coord[1]) # Close linear string
     poly = ogr.Geometry(ogr.wkbPolygon) # Create polygon geometry
     poly.AddGeometry(ring) # Add linear string to polygon
     return(poly) # Return the polygon
@@ -128,14 +128,14 @@ def mask_extent(ds, aoi_extent):
     if(len(ds.GetMetadata('RPC')) > 0): # If the input image is using rational polynomial coefficients for spatial reference
         ul_col, ul_row = coord_to_rpc_image(lat = ul_lat, lon = ul_lon, height = 0, rpc_coeff = ds.GetMetadata('RPC'))
         lr_col, lr_row = coord_to_rpc_image(lat = lr_lat, lon = lr_lon, height = 0, rpc_coeff = ds.GetMetadata('RPC'))
-    else: # If the input image is using a coordinate system 
+    else: # If the input image is using a coordinate system
         ul_x, ul_y = coord_to_proj_image(lon = ul_lon, lat = ul_lat, projection = ds.GetProjection()) # Convert the upper left lat,lon coordinates to x,y coordinates in the image coordinate system
         lr_x, lr_y = coord_to_proj_image(lon = lr_lon, lat = lr_lat, projection = ds.GetProjection()) # Convert the lower right lat,lon coordinates to x,y coordinates in the image coordinate system
         ul_col, ul_row = world_to_pixel(x = ul_x, y = ul_y, geotransform = ds.GetGeoTransform()) # Convert the upper left x,y coordinates to col,row position within the input image
         lr_col, lr_row = world_to_pixel(x = lr_x, y = lr_y, geotransform = ds.GetGeoTransform()) # Convert the lower right x,y coordinates to col,row position within the input image
-    if(ul_col < 0): # If the specified ul_lon is west of the image, set ul_lat to the origin 
+    if(ul_col < 0): # If the specified ul_lon is west of the image, set ul_lat to the origin
         ul_col = 0
-    if(ul_row < 0): # If the specified ul_lat is north of the image, set ul_lat to the origin 
+    if(ul_row < 0): # If the specified ul_lat is north of the image, set ul_lat to the origin
         ul_row = 0
     if(lr_col > (ds.RasterXSize - 1)): # If the specified lr_lon is east of the image, set lr_lon to the max col position
         lr_col = ds.RasterXSize - 1
@@ -161,7 +161,7 @@ def earth_sun_distance(parsed_date_time):
     A = int(yr/100)
     B = 2 - A + int(A/4)
     JD = int(365.25*(yr + 4716)) + int(30.6001*(mon + 1)) + d + (UT/24.0) + B - 1524.5 # Julian Day
-    D = JD - 2451545.0 
+    D = JD - 2451545.0
     g = 357.529 + 0.98560028 * D
     d_ES = 1.00014 - 0.01671 * np.cos(g*(np.pi/180)) - 0.00014 * np.cos(2*g*(np.pi/180)) # The Earth-Sun distance in Astronomical Units (AU). Should have a value between 0.983 and 1.017
     return(d_ES) # Return the Earth-Sun distance in AU
@@ -188,7 +188,7 @@ def worldview_band_center(sat_id, band_num):
     if sat_id == 'WV02':
         return([0.4273, 0.4779, 0.5462, 0.6078, 0.6588, 0.7237, 0.8313, 0.9080][band_num])
     elif sat_id == 'WV03':
-        return([0.4274 , 0.4819, 0.5471, 0.6043, 0.6601, 0.7227, 0.8240, 0.9136][band_num]) 
+        return([0.4274 , 0.4819, 0.5471, 0.6043, 0.6601, 0.7227, 0.8240, 0.9136][band_num])
 #####################
 # Main Functions
 ##################### extract info about the filepaths, cloud cover, and aoi coverage of the multispectral tiles packaged in a zipped folder delivered by Maxar
@@ -204,7 +204,7 @@ def list_files(zip_fp, aoi_extent):
         parsed_metadata = minidom.parse(f) # Parse XML file
         aquisitionDF.at[i,'DIRECTORY'] = os.path.dirname(f_xml[i]) # Save directory name for the XML file (this directory also contains the image data that we ultimately want)
         for var in ['SATID', 'TLCTIME','CLOUDCOVER']: # Extract the satellite ID, acquisition date-time, and cloud cover from the parsed XML file
-            aquisitionDF.at[i,var] = extract_metadata(metadata_file = parsed_metadata, metadata_var = var, instance = 0) 
+            aquisitionDF.at[i,var] = extract_metadata(metadata_file = parsed_metadata, metadata_var = var, instance = 0)
         coord_list = ['ULLON', 'ULLAT', 'URLON','URLAT', 'LRLON', 'LRLAT', 'LLLON','LLLAT', 'ULLON', 'ULLAT'] # List the variable names for the corner coordinates of the image footprint
         geom = [] # Empty list to store coordinates
         for coord in coord_list: # Extract corner coordinates for image footprint from metadata
@@ -239,9 +239,9 @@ def clip_image(image_fp, output_fp, aoi_extent, ds_nodata = None):
     lr_x, lr_y = coord_to_proj_image(lon = lr_lon, lat = lr_lat, projection = ds.GetProjection()) # Convert the lower right lat,lon coordinates to x,y coordinates in the image coordinate system
     ul_col, ul_row = world_to_pixel(x = ul_x, y = ul_y, geotransform = ds.GetGeoTransform()) # Convert the upper left x,y coordinates to col,row position within the input image
     lr_col, lr_row = world_to_pixel(x = lr_x, y = lr_y, geotransform = ds.GetGeoTransform()) # Convert the lower right x,y coordinates to col,row position within the input image
-    if(ul_col < 0): # if the specified ul_lon is west of the image, set ul_lat to the origin 
+    if(ul_col < 0): # if the specified ul_lon is west of the image, set ul_lat to the origin
         ul_col = 0
-    if(ul_row < 0): # if the specified ul_lat is north of the image, set ul_lat to the origin 
+    if(ul_row < 0): # if the specified ul_lat is north of the image, set ul_lat to the origin
         ul_row = 0
     if(lr_col > (ds.RasterXSize - 1)): # if the specified lr_lon is east of the image, set lr_lon to the max col position
         lr_col = ds.RasterXSize - 1
@@ -272,8 +272,8 @@ def rad_cal(image_fp, output_fp, aoi_extent = None, dst_nodata = -32768):
     create_directory(os.path.dirname(output_fp)) # Create output directory if it doesn't already exist
     ds = gdal.Open(image_fp) # Open input image
     ds_geotransform = ds.GetGeoTransform() # Get image geotransform
-    ds_projection = ds.GetProjection() # Get image projection. If the image is using rational polynomial coefficients for spatial reference, this will be blank 
-    ds_RPCs = ds.GetMetadata('RPC') # Get image rational polynomial coefficients. If the image is projected, this will be blank 
+    ds_projection = ds.GetProjection() # Get image projection. If the image is using rational polynomial coefficients for spatial reference, this will be blank
+    ds_RPCs = ds.GetMetadata('RPC') # Get image rational polynomial coefficients. If the image is projected, this will be blank
     ds_nbands = ds.RasterCount # Get the number of bands
     ds_cols = ds.RasterXSize # Get the number of columns (x)
     ds_rows = ds.RasterYSize # Get the number of rows (y)
@@ -290,14 +290,14 @@ def rad_cal(image_fp, output_fp, aoi_extent = None, dst_nodata = -32768):
     solar_zenith = 90 - float(solar_elevation) # Convert solar elevation to solar zenith (in degrees)
     aquisition_date_time = extract_metadata(metadata_file = metadata, metadata_var = 'TLCTIME', instance = 0) # Get aquisition date-time object from the metadata
     parsed = parse_date_time(aquisition_date_time) # Parse data-time object into its constituent components
-    dist_au = earth_sun_distance(parsed) # Convert parsed date-time object to sun-earth distance in astronomical units  
+    dist_au = earth_sun_distance(parsed) # Convert parsed date-time object to sun-earth distance in astronomical units
     satellite = extract_metadata(metadata_file = metadata, metadata_var = 'SATID', instance = 0) # Get the satellite id from the metadata (WV2 or WV3)
-    
+
     dst_ds = gdal.GetDriverByName('GTiff').Create(output_fp, ds_cols, ds_rows, ds_nbands, gdal.GDT_Int16) # Create an empty raster that will contain radiometrically calibrated (remote sensing reflectance) pixel values
     dst_ds.SetGeoTransform(ds_geotransform) # Use the same geotranform as the input image
     dst_ds.SetProjection(ds_projection) # Use the same projection as the input image
     dst_ds.SetMetadata(ds_RPCs, 'RPC') # Use the same RPCs as the input image
-    
+
     for j in range(ds_nbands): # Loop through each band of the input image
         ds_band = ds.GetRasterBand(j+1) # Get the jth band (python indexing starts at zero, gdal indexing starts at 1, hence j+1)
         ds_band_nodata = ds_band.GetNoDataValue() # Get the band's no data value
@@ -329,7 +329,7 @@ def rad_cal(image_fp, output_fp, aoi_extent = None, dst_nodata = -32768):
                     dst_ds.GetRasterBand(j+1).WriteArray(Rrs, cpos, rpos) # Write array containing remote sensing reflectance to the output image object
         dst_ds.GetRasterBand(j+1).SetNoDataValue(dst_nodata) # Set no data value for the band
     dst_ds.SetMetadata({'sat_id': ''.join(satellite)}) # Embed satellite id into the image's metadata under the 'sat_id' tag
-    # Get rid of unneeded objects to avoid read/write errors 
+    # Get rid of unneeded objects to avoid read/write errors
     dst_ds.FlushCache()
     ds.FlushCache()
     dst_ds = None
@@ -364,19 +364,19 @@ def embed_dos_val(image_fp, green_band = 2, nir_band = 6, dos_band = 5, ndwi_thr
                 ndwi = np.full(np.shape(green_block), ds_nodata) # Create an array to store ndwi values
                 nir_block = ds.GetRasterBand(nir_band + 1).ReadAsArray(cpos, rpos, numCols, numRows) # Read block of the NIR1 band
                 ndwi[mask] = np.divide(np.subtract(green_block[mask], nir_block[mask]), np.add(green_block[mask],nir_block[mask])) # Compute ndwi with the green block and NIR1 block
-                pos = np.where(ndwi < ndwi_threshold) # Threshold ndwi values to find column and row positions where water isn't present 
+                pos = np.where(ndwi < ndwi_threshold) # Threshold ndwi values to find column and row positions where water isn't present
                 dos_block = ds.GetRasterBand(dos_band + 1).ReadAsArray(cpos, rpos, numCols, numRows) # Read block of the DOS band
                 dos_block[pos[0], pos[1]] = ds_nodata # Mask pixels within the DOS band where water isn't present
                 dos_arr[rpos:(rpos+numRows), cpos:(cpos+numCols)] = dos_block # Write DOS band block to the DOS band array
     dos_vec = dos_arr.flatten() # Flatten the DOS band array to 1D vector
     dos_vec = dos_vec[np.where(dos_vec != ds_nodata)] # Remove null values from 1D vector
     dos_sort = np.sort(dos_vec) # Sort 1D vector
-    dos_val = np.median(dos_sort[0:round((len(dos_sort)/20)-1)])/2 # Find the DOS anchor value (half of the median of the lowest 5%) 
+    dos_val = np.median(dos_sort[0:round((len(dos_sort)/20)-1)])/2 # Find the DOS anchor value (half of the median of the lowest 5%)
     satellite = ds.GetMetadata().get('sat_id') # Get the satellite id from the input image metadata
     if(satellite == None): # If the satellite id isn't present within the metadata, embed the DOS value into the input image metadata alone
-        ds.SetMetadata({'dos_value': ''.join(str(dos_val))}) 
+        ds.SetMetadata({'dos_value': ''.join(str(dos_val))})
     elif(satellite != None): # If the satellite id is present within the metadata, embed the DOS value into the input image metadata along with the satellite id
-        ds.SetMetadata({'sat_id': ''.join(satellite), 'dos_value': ''.join(str(dos_val))}) 
+        ds.SetMetadata({'sat_id': ''.join(satellite), 'dos_value': ''.join(str(dos_val))})
     ds.FlushCache() # Get rid of unneeded objects to avoid read/write errors
     ds = None
     ndwi = None
@@ -404,7 +404,7 @@ def atm_cor(image_fp, output_fp, rayleighExp, dos_band = 5, dos_value = None, sa
     create_directory(os.path.dirname(output_fp)) # create output directory if it doesn't exist
     ds = gdal.Open(image_fp) # Open input image
     ds_geotransform = ds.GetGeoTransform() # Get image geotransform
-    ds_projection = ds.GetProjection() # Get image projection. If the image is using rational polynomial coefficients for spatial reference, this will be blank 
+    ds_projection = ds.GetProjection() # Get image projection. If the image is using rational polynomial coefficients for spatial reference, this will be blank
     ds_RPCs = ds.GetMetadata('RPC') # Get image rational polynomial coefficients. If the image is projected, this will be blank
     ds_nbands = ds.RasterCount # Get the number of bands
     ds_cols = ds.RasterXSize # Get the number of columns (x)
@@ -416,7 +416,7 @@ def atm_cor(image_fp, output_fp, rayleighExp, dos_band = 5, dos_value = None, sa
         satellite = ds.GetMetadata().get('sat_id')
     dos_band_center = worldview_band_center(sat_id = satellite, band_num = dos_band) # Get the wavelength of the center of the DOS band from the band metadata
     scatteringFactor = dos_band_center**rayleighExp * dos_value # Compute scattering factor or DOS atmospheric correction
-    
+
     dst_ds = gdal.GetDriverByName('GTiff').Create(output_fp, ds_cols, ds_rows, ds_nbands, gdal.GDT_Int16) # Create empty raster that will store atmospherically corrected pixel values
     dst_ds.SetGeoTransform(ds_geotransform) # Use the same geotranform as the input image
     dst_ds.SetProjection(ds_projection) # Use the same projection as the input image
@@ -455,7 +455,7 @@ def atm_cor(image_fp, output_fp, rayleighExp, dos_band = 5, dos_value = None, sa
 ##################### Mosaic a list of images
 def mosaic(image_list, output_fp):
     create_directory(os.path.dirname(output_fp)) # Create output directory if it doesn't already exist
-    input_list_txt = os.path.join(os.path.commonpath(image_list), 'tmp_tile_list.txt') # Create temporary txt file to store list of image files 
+    input_list_txt = os.path.join(os.path.commonpath(image_list), 'tmp_tile_list.txt') # Create temporary txt file to store list of image files
     with open(input_list_txt, 'w') as f: # Write list of image files to txt file
         for image in image_list:
             f.write(f"{image}\n")
@@ -472,10 +472,10 @@ def multipart_shp(shp_fp):
         geomType = geometry.GetGeometryName() # Get geometry type of feature
         feature = in_layer.GetNextFeature()  # Next feature
     ds = None # Close shapefile
-    if geomType == 'MULTIPOLYGON': 
+    if geomType == 'MULTIPOLYGON':
         return(True) # Return true if shapefile in multipart
     else:
-        return(False) # Return false if shapefile is singlepart 
+        return(False) # Return false if shapefile is singlepart
 ##################### Convert a multipart shapefile to a singlepart shapefile
 def multipart_to_singlepart(shp_fp, out_fp, output_proj=None):
     ds = ogr.Open(shp_fp)  # Open input shapefile
@@ -546,8 +546,8 @@ def shp_to_roi(shp_fp, image_fp, output_dir, field_name = 'Classname'):
     field_vals = []
     feature = in_layer.GetNextFeature() # Get the first feature
     while feature: # Loop through features in shapefile
-        field_vals.append(feature.GetFieldAsString(field_name)) # Get field values from each feature  
-        feature = in_layer.GetNextFeature() 
+        field_vals.append(feature.GetFieldAsString(field_name)) # Get field values from each feature
+        feature = in_layer.GetNextFeature()
     class_names = list(set(field_vals)) # List unique field values (class names)
     in_layer = None
     for unique_class in class_names: # Loop through each class
@@ -567,7 +567,7 @@ def shp_to_roi(shp_fp, image_fp, output_dir, field_name = 'Classname'):
             line.AddPoint(vec_geom[0], vec_geom[3]) # Add upper left coordinates as a point
             line.AddPoint(vec_geom[1], vec_geom[2]) # Add lower right coordinates as a point
             line.Transform(transform) # Transform the point object from the source to target spatial reference
-            roi_extent = [] # empty list object to hold the roi extent coordinates 
+            roi_extent = [] # empty list object to hold the roi extent coordinates
             for pt in range(line.GetPointCount()): # Populate roi_extent list with ul_lon, ul_lat, lr_lon, lr_lat
                 x,y = line.GetPoint(pt)[0:2]
                 roi_extent.append(x)
@@ -593,8 +593,8 @@ def roi_classes(shp_fp, field_name = 'Classname'):
     field_vals = []
     feature = in_layer.GetNextFeature() # Get the first feature
     while feature: # Loop through features in shapefile
-        field_vals.append(feature.GetFieldAsString(field_name)) # Get field values from each feature  
-        feature = in_layer.GetNextFeature() 
+        field_vals.append(feature.GetFieldAsString(field_name)) # Get field values from each feature
+        feature = in_layer.GetNextFeature()
     class_names = list(set(field_vals)) # List unique field values (class names)
     return(class_names) # Return list of unique class names
 ##################### Define DCNN model architecture
@@ -616,14 +616,14 @@ def dcnn_model(numChannels, dimension, numClasses):
 def train_dcnn(cnnFileName, training_data_directory, class_names, numChannels, dimension, selected_sample_per_class = 20000, balanced_option = 'balanced', epochs = 500, batchSize = 256, deleted_channels = []):
     save_directory = os.path.dirname(cnnFileName)
     create_directory(save_directory) # Create the specified output directory
-    orig_stdout = sys.stdout # Create system output object 
+    orig_stdout = sys.stdout # Create system output object
     numClasses = len(class_names) # Number of classes
     multi_model = dcnn_model(numChannels, dimension, numClasses) # Create untrained model object
     patch_crop_point=int(np.floor(dimension/2)) # The start point to crop the ROIs
-    labels = [] # Object to contain class labels 
+    labels = [] # Object to contain class labels
     x_train = [] # Object to contain image data for training
-    for class_numb in range(0, len(class_names)): # Loop through each class seperately 
-        roi_list = glob.glob(os.path.join(training_data_directory, '*' + class_names[class_numb] + "*.TIF")) # Identify the image ROIs that exist per class 
+    for class_numb in range(0, len(class_names)): # Loop through each class seperately
+        roi_list = glob.glob(os.path.join(training_data_directory, '*' + class_names[class_numb] + "*.TIF")) # Identify the image ROIs that exist per class
         sample_data = [] # Object to contain sample data
         for patchnumb in range(0, len(roi_list)): # Loop through each ROI image
             ds = gdal.Open(roi_list[patchnumb]) # Read the ROI image
@@ -633,7 +633,7 @@ def train_dcnn(cnnFileName, training_data_directory, class_names, numChannels, d
             im = np.transpose(arr, [1, 2, 0]) # Transpose image array so that standard indexing can be used [cols, rows, bands]
             ds.FlushCache() # Flush ROI image cache to avoid read/write errors
             ds = None
-            a_zeros = np.zeros([im.shape[0], im.shape[1]]) 
+            a_zeros = np.zeros([im.shape[0], im.shape[1]])
             if dimension > 1: # Discard the boundary pixels of the image
                 a_zeros[0:, 0:patch_crop_point] = 1
                 a_zeros[0:patch_crop_point, 0:] = 1
@@ -662,7 +662,7 @@ def train_dcnn(cnnFileName, training_data_directory, class_names, numChannels, d
                 for data_iter in range(iteration, data_iter_end):
                     l = rows_loc[data_iter] # Sample row location
                     m = cols_loc[data_iter] # Sample col location
-                    e = np.zeros([dimension, dimension,  im.shape[2]]) # Empty 3D array to store sample 
+                    e = np.zeros([dimension, dimension,  im.shape[2]]) # Empty 3D array to store sample
                     e[0:dimension, 0:dimension,0: im.shape[2]] = im[l -patch_crop_point:l+patch_crop_point+1, m -patch_crop_point:m+patch_crop_point+1, :] # Extract sample
                     image_index[(data_iter - iteration), :] = [l, m] # Save index information for sample location
                     f[(data_iter - iteration), :, :, :] = e # Add sample to list of samples
@@ -687,13 +687,13 @@ def train_dcnn(cnnFileName, training_data_directory, class_names, numChannels, d
             x_train.append(sample_data)
             del sample_data
     x_train = np.concatenate(x_train) # Concatenate all the training samples
-    labels = np.concatenate(labels) # Concatenate all of the labels 
+    labels = np.concatenate(labels) # Concatenate all of the labels
     x_train = np.delete(x_train, deleted_channels, 3) # Delete bands from samples if the deleted_channels argument was specified
     print(x_train.shape, labels.shape)
     y_train = to_categorical(labels) # vector conversion
     f = open(os.path.join(save_directory, 'command_window'+'.txt'), 'w') # Write model training output to .txt file
     sys.stdout = f
-    history = multi_model.fit(x_train, y_train, epochs=epochs, batch_size=batchSize,validation_split=0.1, shuffle=True, verbose = 2) # Train model with ROI data. Split the labeled ROI data into train and test datasets, shuffle the training data before each epoch 
+    history = multi_model.fit(x_train, y_train, epochs=epochs, batch_size=batchSize,validation_split=0.1, shuffle=True, verbose = 2) # Train model with ROI data. Split the labeled ROI data into train and test datasets, shuffle the training data before each epoch
     print(history)
     sys.stdout = orig_stdout
     print(history)
@@ -720,21 +720,21 @@ def train_dcnn(cnnFileName, training_data_directory, class_names, numChannels, d
 ##################### Classify image with DCNN model
 def dcnn_classification(image_fp, dcnn_fp, output_fp, bSize=256):
     create_directory(os.path.dirname(output_fp))  # Create output directory if it doesn't already exist
-    
+
     # Read the specified dcnn model
     multi_model = tensorflow.keras.models.load_model(dcnn_fp)
-    
+
     with h5py.File(dcnn_fp, mode='r') as f:
         class_names = f.attrs['class_names']  # Extract the class names from the model metadata
 
     dimension = list(multi_model.input_shape)[1]  # Extract the sample x, y dimensions
     patch_crop_point = int(np.floor(dimension / 2))  # Compute the crop point
 
-   
+
     ds = gdal.Open(image_fp)  # Open input image
     ds_geotransform = ds.GetGeoTransform() # Get image geotransform
-    ds_projection = ds.GetProjection() # Get image projection. If the image is using rational polynomial coefficients for spatial reference, this will be blank 
-    ds_RPCs = ds.GetMetadata('RPC') # Get image rational polynomial coefficients. If the image is projected, this will be blank 
+    ds_projection = ds.GetProjection() # Get image projection. If the image is using rational polynomial coefficients for spatial reference, this will be blank
+    ds_RPCs = ds.GetMetadata('RPC') # Get image rational polynomial coefficients. If the image is projected, this will be blank
     ds_nbands = ds.RasterCount # Get the number of bands
     ds_cols = ds.RasterXSize # Get the number of columns (x)
     ds_rows = ds.RasterYSize # Get the number of rows (y)
@@ -764,7 +764,7 @@ def dcnn_classification(image_fp, dcnn_fp, output_fp, bSize=256):
             mask = (arr != ds_nodata) # Determine where the no data values exist within the input image block
             if mask.any(): # Only proceed if the input image block contains valid pixels
                 im = np.transpose(arr, [1, 2, 0]) # Transpose image array so that standard indexing can be used [cols, rows, bands]
-                rows_loc = np.repeat(np.arange(patch_crop_point, (im.shape[0] - patch_crop_point)), im.shape[1] - (patch_crop_point*2)) # All row positions of samples within the input image block  
+                rows_loc = np.repeat(np.arange(patch_crop_point, (im.shape[0] - patch_crop_point)), im.shape[1] - (patch_crop_point*2)) # All row positions of samples within the input image block
                 cols_loc = np.concatenate([np.arange(patch_crop_point, (im.shape[1] - patch_crop_point))] * (im.shape[0] - (patch_crop_point*2))) # All column positions of samples within the input image block
                 length_all_location = len(rows_loc) # Total number of samples within input image block
                 f = np.zeros([length_all_location, dimension, dimension, ds_nbands]) # Declare the testing variable with the number of samples, sample size, and number of bands
@@ -778,17 +778,14 @@ def dcnn_classification(image_fp, dcnn_fp, output_fp, bSize=256):
                     f[(data_iter - 0), :, :, :] = e # Add sample to list of samples
                 predicted_label = multi_model.predict(f, batch_size=256) # Generate class probability estimates for each sample
                 y_pred_arg = np.argmax(predicted_label, axis=1) # Select the class that has the highest probability estimate for each sample
-                discrete_result = np.zeros([im.shape[0], im.shape[1]]) # Create array object with the same x,y dimensions as input image block 
+                discrete_result = np.zeros([im.shape[0], im.shape[1]]) # Create array object with the same x,y dimensions as input image block
                 for index_predict in range(0, length_all_location): # Store classification values in their correct location
-                    discrete_result[int(image_index[index_predict,0]), int(image_index[index_predict,1])] = y_pred_arg[index_predict] + 1 
+                    discrete_result[int(image_index[index_predict,0]), int(image_index[index_predict,1])] = y_pred_arg[index_predict] + 1
                 null_pos = np.where(f == ds_nodata) # Find samples that contain no data
                 discrete_result[rows_loc[null_pos[0]], cols_loc[null_pos[0]]] = 0 # Change classification values to no data if they were computed from a sample that contained no data
                 out = discrete_result[patch_crop_point:(im.shape[0]-patch_crop_point), patch_crop_point:(im.shape[1]-patch_crop_point)] # Crop the output classifiction array with patch crop point
-                dst_ds.GetRasterBand(1).WriteArray(out, cpos, rpos) # Output discrete classification 
+                dst_ds.GetRasterBand(1).WriteArray(out, cpos, rpos) # Output discrete classification
     ds.FlushCache() # Flush input image cache to avoid read/write errors
-    ds = None 
-    dst_ds.FlushCache() # Flush output image cache to avoid read/write errors                 
+    ds = None
+    dst_ds.FlushCache() # Flush output image cache to avoid read/write errors
     dst_ds = None
-
-
-

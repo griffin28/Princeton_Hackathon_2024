@@ -12,9 +12,9 @@ import gc
 import glob
 import tensorflow
 from keras import __version__
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout, Flatten, Convolution2D
-from tensorflow.keras.utils import to_categorical
+from tensorflow.python.keras.models import Sequential
+from tensorflow.python.keras.layers import Dense, Dropout, Flatten, Convolution2D
+from tensorflow.python.keras.utils import to_categorical
 from tensorflow.python.keras.saving import hdf5_format
 import sys
 import h5py
@@ -46,15 +46,31 @@ import plotly.graph_objects as go
 import fiona
 import seaborn as sns
 
+# PyTorch
 #####################
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-
 from torch.utils.data import DataLoader, TensorDataset
 
+import cv2
+
 class DeepCNN(nn.Module):
+    """
+    A deep convolutional neural network for image classification
+
+    Parameters
+    ----------
+    num_channels : int
+        The number of channels in the input image
+    num_classes : int
+        The number of classes in the output layer
+
+    Returns
+    -------
+    None
+    """
     def __init__(self, num_channels, num_classes):
         super(DeepCNN, self).__init__()
         # num_channels == band count (8), 32 output channels, 3x3 square convolution
@@ -62,7 +78,7 @@ class DeepCNN(nn.Module):
         # v1 = (image_size[0] - kernel_size + 2*padding) / stride + 1
         # v2 = (image_size[1] - kernel_size + 2*padding) / stride + 1
         # (32, v1, v2) => pool_layer => (32, v1/2, v2/2)
-        self.conv1 = nn.Conv2d(3, 32, kernel_size=3)
+        self.conv1 = nn.Conv2d(num_channels, 32, kernel_size=3)
 
         # v3 = 16
         # v4 = (v1/2 - kernel_size + 2*padding) / stride + 1
@@ -677,36 +693,50 @@ def plot_images(dataloader, batch_size = 20):
         ax.imshow(img)
         ax.set_title(labels[idx])
 ##################### Feature Viz
-def feature_viz(model, image_fp, class_names, numChannels, dimension, output_dir, num_features = 32):
+def feature_viz(model, sample, output_dir, conv1_filters = 32, conv2_filters = 16):
     # model = DeepCNN(len(class_names), numChannels)
     # model.load_state_dict(torch.load('saved_model.pt'))
-    # print(model)
-    ds = gdal.Open(image_fp) # Open input image
-    ds_geotransform = ds.GetGeoTransform() # Get image geotransform
-    ds_projection = ds.GetProjection() # Get image projection. If the image is using rational polynomial coefficients for spatial reference, this will be blank
-    ds_RPCs = ds.GetMetadata('RPC') # Get image rational polynomial coefficients. If the image is projected, this will be blank
-    ds_nbands = ds.RasterCount # Get the number of bands
-    ds_cols = ds.RasterXSize # Get the number of columns (x)
-    ds_rows = ds.RasterYSize # Get the number of rows (y)
-    ds_nodata = ds.GetRasterBand(1).GetNoDataValue()
-    if not output_dir.endswith('/'):
-        output_dir += '/'
-    create_directory(output_dir) # Create output directory if it doesn't already exist
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
-    else:
-        device = torch.device('cpu')
-    print(f"Using device: {device}")
-    model.to(device)  # move the model to the GPU (if available)
-    model.eval()  # set the model to evaluation mode
-    for i in range(num_features):
-        filter = model.conv1.weight.data[i].cpu().numpy()
-        filter = np.squeeze(filter)
-        plt.imshow(filter, cmap='gray')
-        plt.savefig(output_dir + 'filter' + str(i) + '.png')
-    ds = None
+    print(model)
+
+    # Get the weights in the first conv layer
+    weights = model.conv1.weight.data
+    w = weights.numpy()
+    print(w.shape)
+
+    fig = plt.figure(figsize=(30, 15))
+    columns = conv1_filters//4 # // is floor division (e.g. 11//4 = 2 (not 2.75))
+    rows = 4
+
+    for i in range(0, conv1_filters):
+        fig.add_subplot(rows, columns, i+1)
+        c = cv2.filter2D(sample, -1, w[i][0])
+        plt.title(f'Filter {i}')
+        plt.imshow(c, cmap='gray')
+
+    plt.savefig(os.path.join(output_dir, 'conv1_filters.png'))
+
+    # Get the weights in the second conv layer
+    weights = model.conv2.weight.data
+    w = weights.numpy()
+    print(w.shape)
+
+    fig = plt.figure(figsize=(30, 15))
+    columns = conv2_filters//4
+    rows = 4
+
+    for i in range(0, conv2_filters):
+        fig.add_subplot(rows, columns, i+1)
+        c = cv2.filter2D(sample, -1, w[i][0])
+        plt.title(f'Filter {i} ')
+        plt.imshow(c, cmap='gray')
+
+    plt.savefig(os.path.join(output_dir, 'conv2_filters.png'))
+    plt.show()
+
+    return
+
 ##################### Train DeepCNN model
-def train_deep_cnn(cnnFileName, training_data_directory, class_names, numChannels, dimension, selected_sample_per_class = 20000, balanced_option = 'balanced', epochs = 500, batchSize = 256, deleted_channels = []):
+def train_deep_cnn(cnnFileName, training_data_directory, class_names, numChannels, dimension, selected_sample_per_class = 20000, balanced_option = 'balanced', epochs = 500, batch_size = 64, deleted_channels = []):
     # torch.cuda.cudart().cudaProfilerStart()
     # torch.cuda.cudart().cudaProfilerStop()
     # torch.cuda.cudart().cudaProfilerInitialize()
@@ -727,7 +757,7 @@ def train_deep_cnn(cnnFileName, training_data_directory, class_names, numChannel
 
     # Create DataLoader object from training data
     # DataLoader object is a Python generator that loads data in batches
-    train_dataloader = DataLoader(training_data, batch_size=batchSize, shuffle=True)
+    train_dataloader = DataLoader(training_data, batch_size=batch_size, shuffle=True)
 
     # Plot images with labels
     # plot_images(train_dataloader, 10)

@@ -84,7 +84,7 @@ class DeepCNN(nn.Module):
         # v4 = (v1/2 - kernel_size + 2*padding) / stride + 1
         # v5 = (v2/2 - kernel_size + 2*padding) / stride + 1
         # (16, v4, v5) => pool_layer => (16, v4/2, v5/2)
-        self.conv2 = nn.Conv2d(32, 16, kernel_size=3)
+        self.conv2 = nn.Conv2d(32, 16, kernel_size=1)
 
         # kernel_size = 2, stride = 2
         self.pool = nn.MaxPool2d(2, 2)
@@ -734,7 +734,83 @@ def feature_viz(model, sample, output_dir, conv1_filters = 32, conv2_filters = 1
     plt.show()
 
     return
+def load_training_data(training_data_directory, class_names, dimension, selected_sample_per_class = 20000, balanced_option = 'balanced', deleted_channels = []):
+    X_train = []
+    y_train = []
+    labels = []
+    patch_crop_point=int(dimension//2) # The start point to crop the ROIs
 
+    for class_name in range(0, len(class_names)):
+        roi_list = glob.glob(os.path.join(training_data_directory, '*' + class_names[class_name] + "*.TIF"))
+        sample_data = []
+        for patchnumb in range(0, len(roi_list)):
+            ds = gdal.Open(roi_list[patchnumb])
+            ds_nodata = ds.GetRasterBand(1).GetNoDataValue()
+            bands = [ds.GetRasterBand(i) for i in range(1, ds.RasterCount + 1)]
+            arr = np.array([band.ReadAsArray() for band in bands])
+            im = np.transpose(arr, [1, 2, 0])
+            ds.FlushCache()
+            ds = None
+            a_zeros = np.zeros([im.shape[0], im.shape[1]])
+            if dimension > 1: # Discard the boundary pixels of the image
+                a_zeros[0:, 0:patch_crop_point] = 1
+                a_zeros[0:patch_crop_point, 0:] = 1
+                a_zeros[-patch_crop_point:, 0:] = 1
+                a_zeros[0:, -patch_crop_point:] = 1
+            index_loc = np.where(a_zeros == 0)
+            rows_loc = index_loc[0] # Number of rows
+            cols_loc = index_loc[1] # Number of columns
+            print('rows_loc cols_loc', im.shape[0], im.shape[1], cols_loc.shape[0], rows_loc.shape[0])
+            data_divided_into = 1 # Training ROIs are divided into 1. This can be changed to increase the number of parts to improve memory constraint
+            length_all_location = int(rows_loc.shape[0]) # Total number of samples within ROI
+            division_len = int(np.ceil(length_all_location/data_divided_into))
+            count_data_division = 0
+            for iteration in range(0, length_all_location, division_len):
+                print('code running')
+                count_data_division = count_data_division + 1
+                print('division number', count_data_division, '    :.....')
+                print('division number', length_all_location, '    :.....', )
+                if count_data_division == data_divided_into:
+                    data_iter_end = length_all_location
+                else:
+                    data_iter_end = iteration + division_len
+                data_length = (data_iter_end - iteration)
+                f = np.zeros([data_length, dimension, dimension, im.shape[2]]) # Declare the testing variable with the number of samples, sample size, and number of bands
+                image_index = np.zeros([data_length, 2])
+                for data_iter in range(iteration, data_iter_end):
+                    l = rows_loc[data_iter] # Sample row location
+                    m = cols_loc[data_iter] # Sample col location
+                    e = np.zeros([dimension, dimension,  im.shape[2]]) # Empty 3D array to store sample
+                    e[0:dimension, 0:dimension,0: im.shape[2]] = im[l -patch_crop_point:l+patch_crop_point+1, m -patch_crop_point:m+patch_crop_point+1, :] # Extract sample
+                    image_index[(data_iter - iteration), :] = [l, m] # Save index information for sample location
+                    f[(data_iter - iteration), :, :, :] = e # Add sample to list of samples
+                null_pos = np.where(f == ds_nodata)
+                if len(null_pos[0]) > 0:
+                    f = f[~null_pos[0],:,:,:]
+            sample_data.append(f) # Concatenate all samples from the same ROIs
+        sample_data = np.concatenate(sample_data) # Concatenate all samples from all ROIs from the same class
+        print('Sample data Shape', sample_data.shape)
+        if balanced_option == 'balanced': # Randomly upsample or downsample to balance the data
+            if np.shape(sample_data)[0] > selected_sample_per_class:
+                index_downsample = np.random.choice(np.shape(sample_data)[0], selected_sample_per_class, replace=False)
+            elif np.shape(sample_data)[0] < selected_sample_per_class:
+                index_downsample = np.random.choice(np.shape(sample_data)[0], selected_sample_per_class)
+            sample_data = sample_data[index_downsample, :, :, :]
+            print('after blancing Sample data Shape', sample_data.shape)
+            labels.append(class_name * np.ones(selected_sample_per_class))
+            X_train.append(sample_data)
+            del sample_data
+        elif balanced_option == 'unbalanced': # Unbalanced dataset
+            labels.append(class_name * np.ones(int(sample_data.shape[0])))
+            X_train.append(sample_data)
+            del sample_data
+    X_train = np.concatenate(X_train) # Concatenate all the training samples
+    labels = np.concatenate(labels) # Concatenate all of the labels
+    X_train = np.delete(X_train, deleted_channels, 3) # Delete bands from samples if the deleted_channels argument was specified
+    print(X_train.shape, labels.shape)
+    y_train = to_categorical(labels) # vector conversion
+
+    return X_train, y_train
 ##################### Train DeepCNN model
 def train_deep_cnn(cnnFileName, training_data_directory, class_names, numChannels, dimension, selected_sample_per_class = 20000, balanced_option = 'balanced', epochs = 500, batch_size = 64, deleted_channels = []):
     # torch.cuda.cudart().cudaProfilerStart()
@@ -742,13 +818,7 @@ def train_deep_cnn(cnnFileName, training_data_directory, class_names, numChannel
     # torch.cuda.cudart().cudaProfilerInitialize()
     # torch.cuda.cudart().cudaProfilerSetConfig()
     # with torch.cuda.device(0):
-
-    loss_over_time = [] # to track the loss as the network trains
-
-    X_train = []
-    y_train = []
-
-    # TODO: fill in training images and labels
+    X_train, y_train = load_training_data(training_data_directory, class_names, dimension, selected_sample_per_class, balanced_option, deleted_channels)
 
     # Create a Dataset from the training data
     # Dataset object is a Python generator that loads data in batches
@@ -758,9 +828,6 @@ def train_deep_cnn(cnnFileName, training_data_directory, class_names, numChannel
     # Create DataLoader object from training data
     # DataLoader object is a Python generator that loads data in batches
     train_dataloader = DataLoader(training_data, batch_size=batch_size, shuffle=True)
-
-    # Plot images with labels
-    # plot_images(train_dataloader, 10)
 
     if torch.cuda.is_available():
         device = torch.device('cuda')
@@ -785,8 +852,16 @@ def train_deep_cnn(cnnFileName, training_data_directory, class_names, numChannel
     # set the model to training mode
     model.train()  # model.eval() to set to evaluation mode
 
+    history = {} # to store the loss and accuracy
+    history['loss'] = []
+    history['accuracy'] = []
+    # loss_over_time = [] # to track the loss as the network trains
+    # accuracy_over_time = [] # to track the accuracy as the network trains
+
     for epoch in range(epochs):  # loop over the dataset multiple times
         running_loss = 0.0
+        correct = 0.0
+
         for i, data in enumerate(train_dataloader):
             # get the input images and their corresponding labels
             inputs, labels = data
@@ -800,6 +875,10 @@ def train_deep_cnn(cnnFileName, training_data_directory, class_names, numChannel
 
             # calculate the loss
             loss = criterion(outputs, labels)
+            running_loss += loss.item()
+
+            _, predicted = torch.max(outputs, 1)
+            correct += (predicted == labels).sum().item()
 
             # backward pass: compute gradient of the loss with respect to model parameters
             loss.backward()
@@ -811,23 +890,36 @@ def train_deep_cnn(cnnFileName, training_data_directory, class_names, numChannel
             running_loss += loss.item()
             if i % 100 == 99:
                 avg_loss = running_loss / 100
-                loss_over_time.append(avg_loss)
-                # print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, avg_loss))
                 print(f'Epoch: {epoch+1}, Batch: {i+1}, Avg loss: {avg_loss}')
                 running_loss = 0.0
 
+        history['loss'].append(running_loss/len(training_data))
+        history['accuracy'].append(correct/len(training_data))
+
     print('Finished Training')
 
-    # Save model with .pt extension
+    orig_stdout = sys.stdout
     save_directory = os.path.dirname(cnnFileName)
     create_directory(save_directory) # Create the specified output directory
+    f = open(os.path.join(save_directory, 'command_window'+'.txt'), 'w')
+    sys.stdout = f
+    print(history)
+    sys.stdout = orig_stdout
+    print(history)
 
+    plt.clf()
+    plt.plot(history['accuracy'])
+    plt.title('model accuracy')
+    plt.ylabel('accuracy')
+    plt.xlabel('epoch')
+    plt.legend(['train'], loc='upper left')
+    plt.savefig(os.path.join(save_directory, 'accuracy.png'))
+
+    # Save model with .pt extension
     if not cnnFileName.endswith('.pt'):
         cnnFileName += '.pt'
 
     torch.save(model.state_dict(), cnnFileName)
-
-    return model, loss_over_time
 
 ##################### Train DCNN model
 def train_dcnn(cnnFileName, training_data_directory, class_names, numChannels, dimension, selected_sample_per_class = 20000, balanced_option = 'balanced', epochs = 500, batchSize = 256, deleted_channels = []):

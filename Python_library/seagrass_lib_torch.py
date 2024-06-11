@@ -66,12 +66,14 @@ class DeepCNN(nn.Module):
         The number of channels in the input image
     num_classes : int
         The number of classes in the output layer
+    image_size : tuple
+        The size of the input image
 
     Returns
     -------
     None
     """
-    def __init__(self, num_channels, num_classes):
+    def __init__(self, num_channels, num_classes, image_size):
         super(DeepCNN, self).__init__()
         # num_channels == band count (8), 32 output channels, 3x3 square convolution
         # v0 = 32
@@ -593,8 +595,6 @@ def multipart_to_singlepart(shp_fp, out_fp, output_proj=None):
 
     ds = None  # Close the input shapefile
     dst_ds = None  # Close the output shapefile
-
-
 ##################### Snap ROI boundary to raster grid and extract pixel values
 def shp_to_roi(shp_fp, image_fp, output_dir, field_name = 'Classname'):
     raster_ds = gdal.Open(image_fp) # Open input image

@@ -12,9 +12,9 @@ import gc
 import glob
 import tensorflow
 from keras import __version__
-from tensorflow.python.keras.models import Sequential
-from tensorflow.python.keras.layers import Dense, Dropout, Flatten, Convolution2D
-from tensorflow.python.keras.utils import to_categorical
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, Flatten, Convolution2D
+from tensorflow.keras.utils import to_categorical
 from tensorflow.python.keras.saving import hdf5_format
 import sys
 import h5py
@@ -46,14 +46,19 @@ import plotly.graph_objects as go
 import fiona
 import seaborn as sns
 
+import nvtx
+
+# with nvtx.annotate("loop", color="blue"):
 
 #####################
 # Supporting Functions
 ##################### Create a specified directory if it doesn't exist
+@nvtx.annotate("create_directory")
 def create_directory(fp):
     if not os.path.exists(fp):
         os.makedirs(fp)
 ##################### Recursive file search
+@nvtx.annotate("recursive_search")
 def recursive_search(input_dir, pattern = "*.TIF"): # By default the function will recursively search for files with .TIF extension
     file_list = [] # Empty list to store files
     for root, dirnames, filenames in os.walk(input_dir):
@@ -61,14 +66,17 @@ def recursive_search(input_dir, pattern = "*.TIF"): # By default the function wi
             file_list.append(os.path.join(root, filename))
     return(file_list) # Return list of files with specified extension
 ##################### Extract a specified instance of a metadata variable from a parsed .XML file
+@nvtx.annotate("extract_metadata")
 def extract_metadata(metadata_file, metadata_var, instance = 0):
     item = metadata_file.getElementsByTagName(metadata_var)[instance]
     val = ''.join([node.data for node in item.childNodes])
     return(val) # Return value as a string
 ##################### Basic check to determine if the correct number of coordinates have been supplied to define an extent
+@nvtx.annotate("check_extent_coord")
 def check_extent_coord(ul_lon, ul_lat, lr_lon, lr_lat):
     return(None) # Don't return anything
 ##################### Convert upper left and lower right lat/lon coordinates to a polygon
+@nvtx.annotate("coord_to_extent_polygon")
 def coord_to_extent_polygon(extent_coord):
     check_extent_coord(*extent_coord) # Check if the appropriate number of coordinates have been supplied
     ring = ogr.Geometry(ogr.wkbLinearRing) # Create linear ring geometry
@@ -81,6 +89,7 @@ def coord_to_extent_polygon(extent_coord):
     poly.AddGeometry(ring) # Add linear string to polygon
     return(poly) # Return the polygon
 ##################### Convert lat, lon to row, column for an image that uses rational polynomical coefficients (RPCs) for spatial reference
+@nvtx.annotate("coord_to_rpc_image")
 def coord_to_rpc_image(lon, lat, rpc_coeff, height = 0):
     L = (lon - float(rpc_coeff.get('LONG_OFF'))) / float(rpc_coeff.get('LONG_SCALE'))
     P = (lat - float(rpc_coeff.get('LAT_OFF'))) / float(rpc_coeff.get('LAT_SCALE'))
@@ -102,6 +111,7 @@ def coord_to_rpc_image(lon, lat, rpc_coeff, height = 0):
     row = int((r_n * float(rpc_coeff.get('LINE_SCALE'))) + float(rpc_coeff.get('LINE_OFF')))
     return([col,row]) # return column and row position
 ##################### Convert lat, lon to x,y coordinates in a projected image's coordinate system
+@nvtx.annotate("coord_to_proj_image")
 def coord_to_proj_image(lon, lat, projection):
     target = osr.SpatialReference(wkt = projection) # Target spatial reference object
     source = osr.SpatialReference() # Empty spatial reference object
@@ -113,6 +123,7 @@ def coord_to_proj_image(lon, lat, projection):
     point.Transform(transform) # Transform the point object from the source to target spatial reference
     return([point.GetX(), point.GetY()]) # Return x, y
 ##################### Convert x,y coordinates in a projected image's coordinate system to row, column
+@nvtx.annotate("world_to_pixel")
 def world_to_pixel(x, y, geotransform):
     ul_x = geotransform[0] # Upper left x coordinate
     ul_y = geotransform[3] # Upper left y coordinate
@@ -122,6 +133,7 @@ def world_to_pixel(x, y, geotransform):
     row = -int((ul_y - y) / y_dist) # Row position
     return([col, row]) # Return col and row position
 #####################
+@nvtx.annotate("mask_extent")
 def mask_extent(ds, aoi_extent):
     check_extent_coord(*aoi_extent) # Create output directory if it doesn't already exist
     ul_lon, ul_lat, lr_lon, lr_lat = aoi_extent # Split list of extent coordinates into individual objects
@@ -146,10 +158,12 @@ def mask_extent(ds, aoi_extent):
     else: # Otherwise return none
         return([None, None, None, None])
 ##################### Parse a worldview date-time string
+@nvtx.annotate("parse_date_time")
 def parse_date_time(date_time_string):
     parsed = datetime.datetime.strptime(date_time_string.split('T')[0], '%Y-%m-%d').timetuple()
     return(parsed) # Return a tuple containing the parsed, consituent components of the input date-time object
 ##################### Take a parsed worldview date-time object and return the sun-earth distance in astronomical units
+@nvtx.annotate("earth_sun_distance")
 def earth_sun_distance(parsed_date_time):
     yr = parsed_date_time.tm_year # Year
     mon = parsed_date_time.tm_mon # Month
@@ -166,24 +180,28 @@ def earth_sun_distance(parsed_date_time):
     d_ES = 1.00014 - 0.01671 * np.cos(g*(np.pi/180)) - 0.00014 * np.cos(2*g*(np.pi/180)) # The Earth-Sun distance in Astronomical Units (AU). Should have a value between 0.983 and 1.017
     return(d_ES) # Return the Earth-Sun distance in AU
 ##################### Gain values for WV2 & WV3 sensors
+@nvtx.annotate("worldview_gain")
 def worldview_gain(sat_id, band_num):
     if sat_id == 'WV02':
         return([1.151, 0.988, 0.936, 0.949, 0.952, 0.974, 0.961, 1.002][band_num])
     elif sat_id == 'WV03':
         return([0.905, 0.940, 0.938, 0.962, 0.964, 1.000, 0.961, 0.978][band_num])
 ##################### Offset values for WV2 & WV3 sensors
+@nvtx.annotate("worldview_offset")
 def worldview_offset(sat_id, band_num):
     if sat_id == 'WV02':
         return([-7.478, -5.736, -3.546, -3.564, -2.512, -4.120, -3.300, -2.891][band_num])
     elif sat_id == 'WV03':
         return([-8.604, -5.809, -4.996, -3.649, -3.021, -4.521, -5.522, -2.992][band_num])
 ##################### Band averaged extraterrestrial solar irridiance for WV2 & WV3 sensors
+@nvtx.annotate("worldview_eai")
 def worldview_eai(sat_id, band_num):
     if sat_id == 'WV02':
         return([1773.81, 2007.27, 1829.62, 1701.85, 1538.85, 1346.09, 1053.21, 856.599][band_num])
     elif sat_id == 'WV03':
         return([1757.89, 2004.61, 1830.18, 1712.07, 1535.33, 1348.08, 1055.94, 858.77][band_num])
 ##################### Band centers for WV2 & WV3 sensors
+@nvtx.annotate("worldview_band_center")
 def worldview_band_center(sat_id, band_num):
     if sat_id == 'WV02':
         return([0.4273, 0.4779, 0.5462, 0.6078, 0.6588, 0.7237, 0.8313, 0.9080][band_num])
@@ -192,6 +210,7 @@ def worldview_band_center(sat_id, band_num):
 #####################
 # Main Functions
 ##################### extract info about the filepaths, cloud cover, and aoi coverage of the multispectral tiles packaged in a zipped folder delivered by Maxar
+@nvtx.annotate("list_files")
 def list_files(zip_fp, aoi_extent):
     check_extent_coord(*aoi_extent) # Check if the appropriate number of coordinates have been supplied
     aoi_polygon = coord_to_extent_polygon(aoi_extent) # Create polygon object out of AOI extent coordinates
@@ -219,6 +238,7 @@ def list_files(zip_fp, aoi_extent):
         aquisitionDF.at[i,'AOI_COVERAGE'] = round(percent_overlap, 2) # Store the percentage overlap, rounded to the 100th
     return(aquisitionDF) # Return dataframe containing information about the multipsectral tiles within the zipped folder
 ##################### unzip specified files
+@nvtx.annotate("unzip_files")
 def unzip_tiles(zip_fp, tile_dir, output_dir):
     create_directory(output_dir) # Create output directory if it doesn't already exist
     f_zip = zipfile.ZipFile(zip_fp, 'r') # Read zipped folder
@@ -228,6 +248,7 @@ def unzip_tiles(zip_fp, tile_dir, output_dir):
         for f in f_match: # Extract each file within tile directory
             f_zip.extract(f, output_dir)
 ##################### clip image by aoi extent
+@nvtx.annotate("clip_image")
 def clip_image(image_fp, output_fp, aoi_extent, ds_nodata = None):
     create_directory(os.path.dirname(output_fp)) # Create an output directory if it doesn't already exist
     check_extent_coord(*aoi_extent) # Check if the appropriate number of coordinates were given
@@ -256,6 +277,7 @@ def clip_image(image_fp, output_fp, aoi_extent, ds_nodata = None):
         new_xml = os.path.basename(image_fp).replace(".TIF", ".XML")
         shutil.copyfile(image_fp.replace(".TIF", ".XML"), os.path.join(output_dir, new_xml))
 ##################### project image
+@nvtx.annotate("project_image")
 def project_image(image_fp, output_fp, target_coord, res, rpc = False, resampling_method = "bilinear"):
     create_directory(os.path.dirname(output_fp)) # Create output directory if it doesn't already exist
     if(rpc == False): # Create projection command for an image that isn't using rational polynomial coefficients
@@ -268,6 +290,7 @@ def project_image(image_fp, output_fp, target_coord, res, rpc = False, resamplin
         new_xml = os.path.basename(image_fp).replace(".TIF", ".XML")
         shutil.copyfile(image_fp.replace(".TIF", ".XML"), os.path.join(output_dir, new_xml))
 ##################### Convert Level 1B image to remote sensing reflectance
+@nvtx.annotate("rad_cal")
 def rad_cal(image_fp, output_fp, aoi_extent = None, dst_nodata = -32768):
     create_directory(os.path.dirname(output_fp)) # Create output directory if it doesn't already exist
     ds = gdal.Open(image_fp) # Open input image
@@ -340,6 +363,7 @@ def rad_cal(image_fp, output_fp, aoi_extent = None, dst_nodata = -32768):
     metadata = None
     gc.collect()
 ##################### calculate DOS value for an image and embed it the metadata of the image
+@nvtx.annotate("embed_dos_val")
 def embed_dos_val(image_fp, green_band = 2, nir_band = 6, dos_band = 5, ndwi_threshold = 0, ds_nodata = None):
     ds = gdal.Open(image_fp, gdal.GA_Update) # Open input image
     cols = ds.RasterXSize # Number of columns in the input image
@@ -389,6 +413,7 @@ def embed_dos_val(image_fp, green_band = 2, nir_band = 6, dos_band = 5, ndwi_thr
     pos = None
     gc.collect()
 ##################### Returns the minimum DOS value for a list of images
+@nvtx.annotate("min_dos_value")
 def min_dos_value(image_list):
     if isinstance(image_list, list): # Check if input object is a list
         dos_list = [] # Create object to store DOS values from each image
@@ -400,6 +425,7 @@ def min_dos_value(image_list):
     else:
         print("The input object is not a list. Try again")
 ##################### Perform DOS atmospheric correction
+@nvtx.annotate("atm_cor")
 def atm_cor(image_fp, output_fp, rayleighExp, dos_band = 5, dos_value = None, satellite = None):
     create_directory(os.path.dirname(output_fp)) # create output directory if it doesn't exist
     ds = gdal.Open(image_fp) # Open input image
@@ -453,6 +479,7 @@ def atm_cor(image_fp, output_fp, rayleighExp, dos_band = 5, dos_value = None, sa
     ds = None
     gc.collect()
 ##################### Mosaic a list of images
+@nvtx.annotate("mosaic")
 def mosaic(image_list, output_fp):
     create_directory(os.path.dirname(output_fp)) # Create output directory if it doesn't already exist
     input_list_txt = os.path.join(os.path.commonpath(image_list), 'tmp_tile_list.txt') # Create temporary txt file to store list of image files
@@ -463,6 +490,7 @@ def mosaic(image_list, output_fp):
     subprocess.call(cmd) # Run mosaic command on the command line
     os.remove(input_list_txt) # Delete txt file
 ##################### Check if a polygonal shapefile is multipart of singlepart
+@nvtx.annotate("multipart_shp")
 def multipart_shp(shp_fp):
     ds = ogr.Open(shp_fp) # Open shapefile
     in_layer = ds.GetLayer() # Get layer
@@ -477,6 +505,7 @@ def multipart_shp(shp_fp):
     else:
         return(False) # Return false if shapefile is singlepart
 ##################### Convert a multipart shapefile to a singlepart shapefile
+@nvtx.annotate("multipart_to_singlepart")
 def multipart_to_singlepart(shp_fp, out_fp, output_proj=None):
     ds = ogr.Open(shp_fp)  # Open input shapefile
     in_layer = ds.GetLayer()  # Get shapefile layer
@@ -531,6 +560,7 @@ def multipart_to_singlepart(shp_fp, out_fp, output_proj=None):
 
 
 ##################### Snap ROI boundary to raster grid and extract pixel values
+@nvtx.annotate("shp_to_roi")
 def shp_to_roi(shp_fp, image_fp, output_dir, field_name = 'Classname'):
     raster_ds = gdal.Open(image_fp) # Open input image
     raster_nodata = raster_ds.GetRasterBand(1).GetNoDataValue()
@@ -582,6 +612,7 @@ def shp_to_roi(shp_fp, image_fp, output_dir, field_name = 'Classname'):
     raster_ds = None # Remove input image
     vec_ds = None # Remove input shapefile
 ##################### Get class names from ROI shapefile
+@nvtx.annotate("roi_classes")
 def roi_classes(shp_fp, field_name = 'Classname'):
     vec_ds = ogr.Open(shp_fp) # Open input shapefile
     in_layer = vec_ds.GetLayer() # Get layer
@@ -598,21 +629,23 @@ def roi_classes(shp_fp, field_name = 'Classname'):
     class_names = list(set(field_vals)) # List unique field values (class names)
     return(class_names) # Return list of unique class names
 ##################### Define DCNN model architecture
+@nvtx.annotate("dcnn_model")
 def dcnn_model(numChannels, dimension, numClasses):
     model = Sequential() # Define sequential model
     model.add(Convolution2D(32, (1, 1), activation='relu', input_shape=(dimension, dimension, numChannels))) # Add first layer
     model.add(Dropout(0.01))
-    print(model.output)
+    # print(model.output)
     model.add(Convolution2D(16, (3, 3), activation='relu')) # Add second layer
     model.add(Dropout(0.01))
-    print(model.output)
+    # print(model.output)
     model.add(Flatten()) # Flatten data volume into a 1D vector
     model.add(Dense(numClasses, activation='softmax')) # Classification operation
-    print(model.output)
+    # print(model.output)
     model.summary()
     model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy']) # Learning parameters
     return model
 ##################### Train DCNN model
+@nvtx.annotate("train_dcnn", color="blue")
 def train_dcnn(cnnFileName, training_data_directory, class_names, numChannels, dimension, selected_sample_per_class = 20000, balanced_option = 'balanced', epochs = 500, batchSize = 256, deleted_channels = []):
     save_directory = os.path.dirname(cnnFileName)
     create_directory(save_directory) # Create the specified output directory
@@ -714,10 +747,14 @@ def train_dcnn(cnnFileName, training_data_directory, class_names, numChannels, d
     plt.legend(['train', 'validation'], loc='upper left')
     plt.savefig(os.path.join(save_directory,'loss.png'))
     plt.clf()
+
+    multi_model.save(cnnFileName)
+
+    # Save trained model
     with h5py.File(cnnFileName, mode = 'w') as f: # Save trained model
-        multi_model.save(f)
         f.attrs['class_names'] = class_names # Save class names in the model's metadata
 ##################### Classify image with DCNN model
+@nvtx.annotate("dcnn_classification", color="green")
 def dcnn_classification(image_fp, dcnn_fp, output_fp, bSize=256):
     create_directory(os.path.dirname(output_fp))  # Create output directory if it doesn't already exist
 
